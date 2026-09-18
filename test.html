@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tìm doanh nghiệp lân cận</title>
+<style>
+  :root{
+    --bg:#f6f7f9;
+    --panel:#ffffff;
+    --line:#e1e4e9;
+    --ink:#1a1d23;
+    --ink-soft:#5b6270;
+    --accent:#2554c7;
+    --accent-soft:#eaf0ff;
+    --ok:#1a7f4e;
+    --warn:#b5490a;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--sans); font-size:14.5px; line-height:1.5;
+  }
+  .wrap{max-width:1180px; margin:0 auto; padding:28px 20px 60px;}
+  header{margin-bottom:22px;}
+  header h1{font-size:21px; margin:0 0 4px; letter-spacing:-0.01em;}
+  header p{margin:0; color:var(--ink-soft); font-size:13.5px;}
+
+  .grid{display:grid; grid-template-columns: 360px 1fr; gap:20px;}
+  @media (max-width: 920px){ .grid{grid-template-columns: 1fr;} }
+
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:18px;
+  }
+  .panel + .panel{margin-top:16px;}
+  .panel h2{font-size:13px; margin:0 0 12px; color:var(--ink-soft); font-weight:600;}
+
+  label{display:block; font-size:12.5px; color:var(--ink-soft); margin-bottom:5px; margin-top:14px;}
+  label:first-of-type{margin-top:0;}
+  input[type=text], input[type=number], select{
+    width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:7px;
+    font-size:14px; font-family:inherit; background:#fff; color:var(--ink);
+  }
+  input:focus, select:focus{outline:2px solid var(--accent-soft); border-color:var(--accent);}
+  .hint{font-size:11.5px; color:var(--ink-soft); margin-top:4px;}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+
+  button{
+    font-family:inherit; font-size:14px; font-weight:600; cursor:pointer;
+    border-radius:7px; border:1px solid transparent; padding:10px 16px;
+  }
+  .btn-primary{background:var(--accent); color:#fff; width:100%; margin-top:18px;}
+  .btn-primary:disabled{background:#a9b8dc; cursor:not-allowed;}
+  .btn-secondary{background:#fff; border-color:var(--line); color:var(--ink);}
+  .btn-secondary:disabled{color:#aaa; cursor:not-allowed;}
+
+  .status{
+    margin-top:12px; font-size:12.5px; color:var(--ink-soft); min-height:18px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .spinner{
+    width:13px; height:13px; border-radius:50%;
+    border:2px solid var(--accent-soft); border-top-color:var(--accent);
+    animation:spin .7s linear infinite; display:none;
+  }
+  .spinner.on{display:inline-block;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .toolbar{display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:10px; flex-wrap:wrap;}
+  .toolbar .count{font-size:13px; color:var(--ink-soft);}
+  .toolbar .count b{color:var(--ink);}
+
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  thead th{
+    text-align:left; padding:9px 10px; background:#fafbfc; border-bottom:1px solid var(--line);
+    color:var(--ink-soft); font-weight:600; position:sticky; top:0;
+  }
+  tbody td{padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top;}
+  tbody tr:hover{background:#fafbfd;}
+  td.num{color:var(--ink-soft); width:34px;}
+  td a{color:var(--accent); text-decoration:none;}
+  td a:hover{text-decoration:underline;}
+  .tag{display:inline-block; padding:1px 7px; border-radius:20px; font-size:11px; font-weight:600;}
+  .tag.ok{background:#e7f5ee; color:var(--ok);}
+  .tag.missing{background:#fbeee6; color:var(--warn);}
+
+  .table-wrap{max-height:640px; overflow:auto; border:1px solid var(--line); border-radius:10px;}
+  .table-wrap table{border-radius:10px; overflow:hidden;}
+
+  .empty{padding:50px 20px; text-align:center; color:var(--ink-soft);}
+  .empty b{color:var(--ink);}
+
+  .error-box{
+    background:#fdeeec; border:1px solid #f3c6bd; color:#8a2c1c;
+    padding:10px 12px; border-radius:8px; font-size:12.5px; margin-top:12px; white-space:pre-wrap;
+  }
+  .key-note{font-size:11.5px; color:var(--ink-soft); margin-top:10px; border-top:1px dashed var(--line); padding-top:10px;}
+  .key-note a{color:var(--accent);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Tìm doanh nghiệp lân cận theo từ khóa</h1>
+    <p>Nhập từ khóa sản phẩm, dán liên kết Google Maps của điểm định vị — công cụ sẽ dò các doanh nghiệp lân cận liên quan và gom SĐT / Website vào bảng.</p>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT: config -->
+    <div>
+      <div class="panel">
+        <h2>1. Google Maps API key</h2>
+        <label for="apiKey">API key (Places API + Maps JavaScript API)</label>
+        <input type="text" id="apiKey" placeholder="AIza...">
+        <div class="hint">Key chỉ dùng ngay trong trình duyệt của bạn, không gửi lên đâu khác. Cần bật <b>Places API</b> và <b>Maps JavaScript API</b>, có bật thanh toán trong Google Cloud Console.</div>
+      </div>
+
+      <div class="panel">
+        <h2>2. Thông tin tìm kiếm</h2>
+        <label for="keyword">Từ khóa sản phẩm / ngành hàng (A)</label>
+        <input type="text" id="keyword" placeholder="VD: linh kiện điện tử">
+
+        <label for="mapsUrl">URL định vị Google Maps</label>
+        <input type="text" id="mapsUrl" placeholder="https://www.google.com/maps/@10.7626,106.6602,15z">
+        <div class="hint">Dán link từ thanh địa chỉ Google Maps (cần chứa toạ độ @lat,lng). Link rút gọn goo.gl/maps không đọc được toạ độ trực tiếp — hãy mở nó ra trước rồi copy link đầy đủ.</div>
+
+        <div class="row2">
+          <div>
+            <label for="radius">Bán kính (m)</label>
+            <input type="number" id="radius" value="3000" min="100" max="50000">
+          </div>
+          <div>
+            <label for="target">Số lượng mục tiêu</label>
+            <input type="number" id="target" value="100" min="1" max="100">
+          </div>
+        </div>
+
+        <button class="btn-primary" id="searchBtn">Bắt đầu tìm</button>
+        <div class="status"><span class="spinner" id="spinner"></span><span id="statusText"></span></div>
+        <div id="errorBox"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: results -->
+    <div class="panel">
+      <div class="toolbar">
+        <h2 style="margin:0;">Kết quả</h2>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span class="count">Tìm được <b id="resultCount">0</b> doanh nghiệp</span>
+          <button class="btn-secondary" id="exportBtn" disabled>Xuất CSV</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="num">#</th>
+              <th>Tên doanh nghiệp</th>
+              <th>Địa chỉ</th>
+              <th>SĐT</th>
+              <th>Website</th>
+              <th>Đánh giá</th>
+              <th>Khoảng cách</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+        <div class="empty" id="emptyState">Chưa có dữ liệu — điền thông tin bên trái rồi bấm <b>Bắt đầu tìm</b>.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let map, service, center;
+let results = []; // {name, address, phone, website, rating, dist}
+let mapsApiLoaded = false;
+let mapsApiLoading = false;
+
+const el = id => document.getElementById(id);
+const spinner = el('spinner');
+const statusText = el('statusText');
+const errorBox = el('errorBox');
+const resultsBody = el('resultsBody');
+const emptyState = el('emptyState');
+const resultCount = el('resultCount');
+const exportBtn = el('exportBtn');
+const searchBtn = el('searchBtn');
+
+function setStatus(msg, spinning){
+  statusText.textContent = msg || '';
+  spinner.classList.toggle('on', !!spinning);
+}
+function showError(msg){
+  errorBox.innerHTML = msg ? '<div class="error-box">'+escapeHtml(msg)+'</div>' : '';
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ---- Parse lat/lng from a Google Maps URL ----
+function parseLatLngFromUrl(url){
+  const patterns = [
+    /@(-?\d+\.\d+),(-?\d+\.\d+)/,
+    /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
+    /[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/,
+    /[?&]ll=(-?\d+\.\d+),(-?\d+\.\d+)/,
+    /[?&]query=(-?\d+\.\d+),(-?\d+\.\d+)/
+  ];
+  for (const re of patterns){
+    const m = url.match(re);
+    if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
+  }
+  return null;
+}
+
+// ---- Load Google Maps JS API dynamically once we have a key ----
+function loadMapsApi(apiKey){
+  return new Promise((resolve, reject) => {
+    if (mapsApiLoaded) return resolve();
+    if (mapsApiLoading){
+      const iv = setInterval(() => { if (mapsApiLoaded){ clearInterval(iv); resolve(); } }, 200);
+      return;
+    }
+    mapsApiLoading = true;
+    window.__onMapsReady = () => { mapsApiLoaded = true; mapsApiLoading = false; resolve(); };
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&callback=__onMapsReady`;
+    script.onerror = () => { mapsApiLoading = false; reject(new Error('Không tải được Google Maps API. Kiểm tra lại API key.')); };
+    document.head.appendChild(script);
+  });
+}
+
+function haversine(a, b){
+  const R = 6371000;
+  const toRad = d => d * Math.PI/180;
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const s = Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+
+function offsetPoint(base, distMeters, bearingDeg){
+  const R = 6371000;
+  const brng = bearingDeg * Math.PI/180;
+  const lat1 = base.lat * Math.PI/180, lng1 = base.lng * Math.PI/180;
+  const lat2 = Math.asin(Math.sin(lat1)*Math.cos(distMeters/R) + Math.cos(lat1)*Math.sin(distMeters/R)*Math.cos(brng));
+  const lng2 = lng1 + Math.atan2(Math.sin(brng)*Math.sin(distMeters/R)*Math.cos(lat1), Math.cos(distMeters/R)-Math.sin(lat1)*Math.sin(lat2));
+  return { lat: lat2*180/Math.PI, lng: lng2*180/Math.PI };
+}
+
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+// Run one nearbySearch (with pagination) at a given point, return array of place results
+function nearbySearchAt(point, keyword, radius){
+  return new Promise((resolve) => {
+    const found = [];
+    const req = { location: point, radius, keyword };
+    service.nearbySearch(req, function handlePage(res, status, pagination){
+      if (status === google.maps.places.PlacesServiceStatus.OK && res){
+        found.push(...res);
+      }
+      if (pagination && pagination.hasNextPage && found.length < 60){
+        setTimeout(() => pagination.nextPage(), 2100);
+      } else {
+        resolve(found);
+      }
+    });
+  });
+}
+
+function getDetails(placeId){
+  return new Promise((resolve) => {
+    service.getDetails({
+      placeId,
+      fields: ['name','formatted_address','formatted_phone_number','international_phone_number','website','rating','geometry']
+    }, (place, status) => {
+      if (status === google.maps.places.PlacesServiceStatus.OK && place){
+        resolve(place);
+      } else {
+        resolve(null);
+      }
+    });
+  });
+}
+
+function renderResults(){
+  resultsBody.innerHTML = '';
+  resultCount.textContent = results.length;
+  emptyState.style.display = results.length ? 'none' : 'block';
+  exportBtn.disabled = results.length === 0;
+
+  results
+    .slice()
+    .sort((a,b) => a.dist - b.dist)
+    .forEach((r, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="num">${i+1}</td>
+        <td>${escapeHtml(r.name)}</td>
+        <td>${escapeHtml(r.address || '')}</td>
+        <td>${r.phone ? escapeHtml(r.phone) : '<span class="tag missing">Không có</span>'}</td>
+        <td>${r.website ? `<a href="${escapeHtml(r.website)}" target="_blank" rel="noopener">${escapeHtml(r.website.replace(/^https?:\/\//,''))}</a>` : '<span class="tag missing">Không có</span>'}</td>
+        <td>${r.rating ? r.rating : '—'}</td>
+        <td>${(r.dist/1000).toFixed(2)} km</td>
+      `;
+      resultsBody.appendChild(tr);
+    });
+}
+
+function toCsv(){
+  const header = ['#','Tên doanh nghiệp','Địa chỉ','SĐT','Website','Đánh giá','Khoảng cách (km)'];
+  const lines = [header.join(',')];
+  results.slice().sort((a,b) => a.dist - b.dist).forEach((r, i) => {
+    const row = [
+      i+1,
+      r.name,
+      r.address || '',
+      r.phone || '',
+      r.website || '',
+      r.rating || '',
+      (r.dist/1000).toFixed(2)
+    ].map(v => `"${String(v).replace(/"/g,'""')}"`);
+    lines.push(row.join(','));
+  });
+  return '\uFEFF' + lines.join('\n');
+}
+
+exportBtn.addEventListener('click', () => {
+  const blob = new Blob([toCsv()], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'doanh_nghiep_lan_can.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+searchBtn.addEventListener('click', async () => {
+  showError('');
+  results = [];
+  renderResults();
+
+  const apiKey = el('apiKey').value.trim();
+  const keyword = el('keyword').value.trim();
+  const mapsUrl = el('mapsUrl').value.trim();
+  const radius = Math.min(50000, Math.max(100, parseInt(el('radius').value || '3000', 10)));
+  const target = Math.min(100, Math.max(1, parseInt(el('target').value || '100', 10)));
+
+  if (!apiKey) return showError('Vui lòng nhập Google Maps API key.');
+  if (!keyword) return showError('Vui lòng nhập từ khóa sản phẩm.');
+  const point = mapsUrl ? parseLatLngFromUrl(mapsUrl) : null;
+  if (!point) return showError('Không đọc được toạ độ từ URL. Hãy dán link Google Maps dạng có chứa "@lat,lng" (mở địa điểm trên Maps rồi copy link ở thanh địa chỉ).');
+
+  center = point;
+  searchBtn.disabled = true;
+  exportBtn.disabled = true;
+
+  try{
+    setStatus('Đang tải Google Maps API...', true);
+    await loadMapsApi(apiKey);
+
+    const dummyDiv = document.createElement('div');
+    map = new google.maps.Map(dummyDiv, { center: point, zoom: 14 });
+    service = new google.maps.places.PlacesService(map);
+
+    // Build a set of search centers: the given point + a ring of offset points
+    // to widen coverage beyond the ~60 result cap of a single nearby search.
+    const searchPoints = [point];
+    const ringDist = Math.max(radius * 0.6, 500);
+    for (let b = 0; b < 360; b += 45){
+      searchPoints.push(offsetPoint(point, ringDist, b));
+    }
+
+    const seen = new Map(); // place_id -> basic result
+    for (let i = 0; i < searchPoints.length && seen.size < target; i++){
+      setStatus(`Đang quét khu vực ${i+1}/${searchPoints.length} — đã thấy ${seen.size} địa điểm...`, true);
+      const found = await nearbySearchAt(searchPoints[i], keyword, radius);
+      for (const p of found){
+        if (!p.place_id || seen.has(p.place_id)) continue;
+        seen.set(p.place_id, p);
+        if (seen.size >= target) break;
+      }
+    }
+
+    if (seen.size === 0){
+      setStatus('');
+      showError('Không tìm thấy doanh nghiệp nào phù hợp với từ khóa quanh vị trí này. Thử tăng bán kính hoặc đổi từ khóa.');
+      searchBtn.disabled = false;
+      return;
+    }
+
+    const idList = Array.from(seen.keys()).slice(0, target);
+    let done = 0;
+    for (const placeId of idList){
+      setStatus(`Đang lấy chi tiết (SĐT/Website): ${done+1}/${idList.length}...`, true);
+      const basic = seen.get(placeId);
+      const detail = await getDetails(placeId);
+      await sleep(120); // gentle pacing to avoid rate limit
+      const loc = detail && detail.geometry && detail.geometry.location
+        ? { lat: detail.geometry.location.lat(), lng: detail.geometry.location.lng() }
+        : (basic.geometry && basic.geometry.location
+            ? { lat: basic.geometry.location.lat(), lng: basic.geometry.location.lng() }
+            : center);
+      results.push({
+        name: (detail && detail.name) || basic.name || '',
+        address: (detail && detail.formatted_address) || basic.vicinity || '',
+        phone: (detail && (detail.formatted_phone_number || detail.international_phone_number)) || '',
+        website: (detail && detail.website) || '',
+        rating: (detail && detail.rating) || basic.rating || '',
+        dist: haversine(center, loc)
+      });
+      done++;
+      renderResults();
+    }
+
+    setStatus(`Hoàn tất — ${results.length} doanh nghiệp.`, false);
+  } catch(err){
+    showError(err.message || String(err));
+    setStatus('', false);
+  } finally {
+    searchBtn.disabled = false;
+  }
+});
+</script>
+
+<div class="wrap" style="padding-top:0;">
+  <div class="key-note">
+    Ghi chú: công cụ gọi trực tiếp Google Places API từ trình duyệt bằng API key của bạn, mỗi lượt tìm chi tiết (SĐT/Website) tính phí theo <a href="https://developers.google.com/maps/documentation/places/web-service/usage-and-billing" target="_blank" rel="noopener">bảng giá Google Places</a>. Do giới hạn của Google, một khu vực tìm kiếm tối đa trả về khoảng 60 kết quả/lần — công cụ tự quét thêm các điểm quanh vị trí gốc để cố gắng đạt đủ số lượng mục tiêu, nhưng số lượng thực tế phụ thuộc vào mật độ doanh nghiệp liên quan trong khu vực.
+  </div>
+</div>
+</body>
+</html>
