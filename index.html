@@ -99,17 +99,19 @@
     width: 100%;
     display:flex;
     justify-content:center;
-    height: 26px;
+    height: 46px;
     position: relative;
     z-index: 3;
   }
   .pointer{
+    --pointer-color: var(--gold);
     width: 0; height: 0;
-    border-left: 15px solid transparent;
-    border-right: 15px solid transparent;
-    border-top: 26px solid var(--gold);
+    border-left: 12px solid transparent;
+    border-right: 12px solid transparent;
+    border-top: 46px solid var(--pointer-color);
     filter: drop-shadow(0 3px 4px var(--shadow));
     transform: translateY(4px);
+    transition: border-top-color 0.12s linear;
   }
   .wheel-hold{
     position: relative;
@@ -333,7 +335,7 @@
 
 <main class="layout">
   <section class="wheel-stage">
-    <div class="pointer-wrap"><div class="pointer"></div></div>
+    <div class="pointer-wrap"><div class="pointer" id="pointerEl"></div></div>
     <div class="wheel-hold">
       <div class="wheel-wrap" id="wheelWrap">
         <canvas id="wheelCanvas" width="640" height="640"></canvas>
@@ -380,6 +382,7 @@
   const canvas = document.getElementById('wheelCanvas');
   const ctx = canvas.getContext('2d');
   const wheelWrap = document.getElementById('wheelWrap');
+  const pointerEl = document.getElementById('pointerEl');
   const spinBtn = document.getElementById('spinBtn');
   const entriesInput = document.getElementById('entriesInput');
   const entryCount = document.getElementById('entryCount');
@@ -433,12 +436,28 @@
     return lum > 0.62 ? '#1A1826' : '#FFFFFF';
   }
 
+  function updatePointerColor(rotDeg){
+    const n = entries.length;
+    if(n === 0){
+      pointerEl.style.setProperty('--pointer-color', 'var(--gold)');
+      return;
+    }
+    const segDeg = 360/n;
+    // Inverse of the mapping used when drawing/spinning the wheel: a segment
+    // drawn at canvas angle "theta" (0 = east, clockwise) ends up on screen
+    // at (theta + rotDeg) mod 360. The pointer sits at the top, i.e. screen
+    // angle 270, so the segment currently under it satisfies theta = 270 - rotDeg.
+    const theta = ((270 - rotDeg) % 360 + 360) % 360;
+    const idx = Math.floor(theta/segDeg) % n;
+    pointerEl.style.setProperty('--pointer-color', PALETTE[idx % PALETTE.length]);
+  }
+
   function drawWheel(){
     const size = canvas.width;
     const cx = size/2, cy = size/2, r = size/2 - 6;
     ctx.clearRect(0,0,size,size);
     const n = entries.length;
-    if(n === 0) return;
+    if(n === 0){ updatePointerColor(rotation); return; }
     const seg = (Math.PI*2)/n;
     for(let i=0;i<n;i++){
       const start = i*seg, end = start+seg;
@@ -464,6 +483,7 @@
       ctx.fillText(label, r - 18, 0);
       ctx.restore();
     }
+    updatePointerColor(rotation);
   }
 
   function updateHint(){
@@ -532,56 +552,48 @@
     const winnerIndex = Math.floor(Math.random()*n);
     const targetSegAngle = winnerIndex*segDeg + segDeg/2; // exact center of the winning segment
 
-    // Speed profile, total 12s:
-    //  0.0 - 5.0s  : fast, ~10 rev/sec (with a quick 0.3s ramp-up)
-    //  5.0 - 8.0s  : transition, decelerating down to ~0.25 rev/sec
-    //  8.0 - 11.5s : slow crawl, constant ~0.25 rev/sec, carrying just past
-    //                the winning segment's center to its far (left) edge
-    //  11.5 - 12.0s: settle back from that edge to rest exactly at center
+    // Speed profile, total 15s:
+    //  0.0 - 5.0s  : fast, constant ~10 rev/sec (with a quick 0.3s ramp-up so it doesn't jump-start)
+    //  5.0 - 10.0s : transition, decelerating linearly from ~10 rev/sec down to ~5 rev/sec
+    //  10.0 - 15.0s: final approach, easing from ~5 rev/sec down to a full stop exactly on the result
     const V0 = 3600;   // deg/sec, ~10 rev/sec
-    const V1 = 90;     // deg/sec, ~0.25 rev/sec
+    const V1 = 1800;   // deg/sec, ~5 rev/sec
     const RAMP_DUR = 0.3;
-    const PHASE1_DUR = 5.0;   // fast phase, includes the ramp
-    const TRANS_DUR = 3.0;    // transition decel phase
-    const CRAWL_DUR = 3.5;    // slow constant phase
-    const SETTLE_DUR = 0.5;   // edge-touch, then ease back to center
+    const PHASE1_DUR = 5.0;   // fast phase (0-5s), includes the ramp
+    const TRANS_DUR = 5.0;    // transition decel phase (5-10s): 10 rev/s -> 5 rev/s
+    const FINAL_DUR = 5.0;    // final decel phase (10-15s): 5 rev/s -> 0, lands on result
 
     const t1 = RAMP_DUR;
     const t2 = PHASE1_DUR;
     const t3 = t2 + TRANS_DUR;
-    const t4 = t3 + CRAWL_DUR;
-    const t5 = t4 + SETTLE_DUR; // total duration = 12.0s
+    const t4 = t3 + FINAL_DUR; // total duration = 15.0s
 
-    // How far past center the wheel carries before the edge stops it -
-    // most of the way to the segment boundary, so it visibly touches it.
-    const overshootDelta = segDeg * 0.85 / 2;
+    // Fixed (V0-independent) distance covered while easing V1 -> 0 over the final phase,
+    // using a velocity profile v(u) = V1*(1-u)^2 (starts at V1, ends at 0, smooth stop).
+    const finalDist = V1 * FINAL_DUR / 3;
 
-    // Fixed (offset-independent) distances for the transition + crawl.
-    const transDist = (V0 + V1)/2 * TRANS_DUR;
-    const crawlDist = V1 * CRAWL_DUR;
-    const fixedTailForward = transDist + crawlDist;
-
-    // Nominal fast-phase distance at exactly V0, used to size the constant-speed leg.
-    const dNominal = V0 * (PHASE1_DUR - RAMP_DUR/2);
+    // Coefficient linking the fast-phase speed (V0) to total distance travelled:
+    // distance = A*V0 + (fixed tail from the transition + final phases).
+    const A = (PHASE1_DUR - RAMP_DUR/2) + TRANS_DUR/2;
+    const fixedTail = V1 * TRANS_DUR/2 + finalDist;
 
     const startRotation = rotation;
-    const baseFinalForward = startRotation + dNominal + fixedTailForward;
+    const baseFinalForward = startRotation + A*V0 + fixedTail;
     const baseFinalForwardMod = ((baseFinalForward%360)+360)%360;
     const desiredMod = ((270 - targetSegAngle)%360+360)%360;
-    // Solve so that (forward-end rotation) minus the overshoot lands exactly
-    // on the winning segment's center, mod 360.
-    const offsetDelta = ((desiredMod - baseFinalForwardMod + overshootDelta)%360+360)%360;
+    // Solve so the wheel comes to rest exactly on the winning segment's center.
+    const offsetDelta = ((desiredMod - baseFinalForwardMod)%360+360)%360;
 
     // The random landing offset is absorbed into the fast phase's speed
-    // (a sub-2% tweak to V0), so the transition/crawl/settle stay a clean,
+    // (a sub-1% tweak to V0), so the transition/final-approach stay a clean,
     // consistent finish every time.
-    const V0adj = (dNominal + offsetDelta) / (PHASE1_DUR - RAMP_DUR/2);
+    const V0adj = V0 + offsetDelta/A;
     const posAtT1 = V0adj * RAMP_DUR/2;
     const posAtT2 = posAtT1 + V0adj*(PHASE1_DUR - RAMP_DUR);
+    const transDist = (V0adj + V1)/2 * TRANS_DUR;
     const posAtT3 = posAtT2 + transDist;
 
-    const forwardEndRotation = startRotation + posAtT3 + crawlDist; // = touch point (edge)
-    const restRotation = forwardEndRotation - overshootDelta;        // = exact center
+    const restRotation = startRotation + posAtT3 + finalDist; // exact center of winning segment
 
     const startTime = performance.now();
     let lastTickTime = startTime;
@@ -601,18 +613,18 @@
         useTimeBasedTick = true;
       } else if(t <= t3){
         const s = t - t2;
-        currentRotation = startRotation + posAtT2 + V0*s + (V1-V0)*s*s/(2*TRANS_DUR);
-      } else if(t <= t4){
-        const s = t - t3;
-        currentRotation = startRotation + posAtT3 + V1*s;
+        currentRotation = startRotation + posAtT2 + V0adj*s + (V1-V0adj)*s*s/(2*TRANS_DUR);
+        useTimeBasedTick = true;
       } else {
-        if(!thunkPlayed){ playThunk(); thunkPlayed = true; }
-        const s = Math.min(t - t4, SETTLE_DUR) / SETTLE_DUR;
-        const eased = 1 - Math.pow(1-s, 3); // ease-out, ends at rest with zero velocity
-        currentRotation = forwardEndRotation - overshootDelta*eased;
+        if(!thunkPlayed && t >= t4){ playThunk(); thunkPlayed = true; }
+        const u = Math.min(t - t3, FINAL_DUR) / FINAL_DUR;
+        // position(u) integrates v(u)=V1*(1-u)^2, so it starts at velocity V1
+        // (matching the transition phase) and eases smoothly down to 0.
+        currentRotation = startRotation + posAtT3 + finalDist*(1 - Math.pow(1-u, 3));
       }
 
       wheelWrap.style.transform = `rotate(${currentRotation}deg)`;
+      updatePointerColor(currentRotation);
 
       if(useTimeBasedTick){
         if(now - lastTickTime > 55){
@@ -629,7 +641,7 @@
         }
       }
 
-      if(t < t5){
+      if(t < t4){
         requestAnimationFrame(frame);
       } else {
         rotation = restRotation;
